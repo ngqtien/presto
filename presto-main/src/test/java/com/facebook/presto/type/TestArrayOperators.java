@@ -789,12 +789,58 @@ public class TestArrayOperators
                 new ArrayType(new ArrayType(INTEGER)),
                 ImmutableList.of(ImmutableList.of(1), ImmutableList.of(2)));
 
+        // with lambda function
+        assertFunction(
+                "ARRAY_SORT(ARRAY[2, 3, 2, null, 4, 1], (x, y) -> IF(x < y, 1, IF(x = y, 0, -1)))",
+                new ArrayType(INTEGER),
+                asList(4, 3, 2, 2, 1, null));
+        assertFunction(
+                "ARRAY_SORT(ARRAY[2, null, BIGINT '3', 4, 1], (x, y) -> IF(x < y, 1, IF(x = y, 0, -1)))",
+                new ArrayType(BIGINT),
+                asList(4L, 3L, 2L, 1L, null));
+        assertFunction(
+                "ARRAY_SORT(ARRAY['a', null, 'abcd', 'abc', 'zx'], (x, y) -> IF(length(x) < length(y), 1, IF(length(x) = length(y), 0, -1)))",
+                new ArrayType(createVarcharType(4)),
+                asList("abcd", "abc", "zx", "a", null));
+        assertFunction(
+                "ARRAY_SORT(ARRAY[TRUE, FALSE, null, TRUE, FALSE, TRUE], (x, y) -> IF(x = y, 0, IF(x, -1, 1)))",
+                new ArrayType(BOOLEAN),
+                asList(true, true, true, false, false, null));
+        assertFunction(
+                "ARRAY_SORT(ARRAY[22.1E0, null, 11.1E0, 1.1E0, 44.1E0], (x, y) -> IF(x < y, 1, IF(x = y, 0, -1)))",
+                new ArrayType(DOUBLE),
+                asList(44.1, 22.1, 11.1, 1.1, null));
+        assertFunction(
+                "ARRAY_SORT(ARRAY[from_unixtime(100), from_unixtime(1), null, from_unixtime(200)], (x, y) -> IF(date_diff('millisecond', y, x) < 0, 1, IF(date_diff('millisecond', y, x) = 0, 0, -1)))",
+                new ArrayType(TIMESTAMP),
+                asList(sqlTimestamp(200 * 1000), sqlTimestamp(100 * 1000), sqlTimestamp(1000), null));
+        assertFunction(
+                "ARRAY_SORT(ARRAY[ARRAY[2, 3, 1], null, ARRAY[4, 2, 1, 4], ARRAY[1, 2]], (x, y) -> IF(cardinality(x) < cardinality(y), 1, IF(cardinality(x) = cardinality(y), 0, -1)))",
+                new ArrayType(new ArrayType(INTEGER)),
+                asList(asList(4, 2, 1, 4), asList(2, 3, 1), asList(1, 2), null));
+        assertFunction(
+                "ARRAY_SORT(ARRAY[1, null], (x, y) -> x / COALESCE(y, 0))",
+                new ArrayType(INTEGER),
+                asList(1, null));
+        assertFunction(
+                "ARRAY_SORT(ARRAY[2.3, 2.1, 2.2], (x, y) -> IF(x < y, 1, IF(x = y, 0, -1)))",
+                new ArrayType(createDecimalType(2, 1)),
+                ImmutableList.of(decimal("2.3"), decimal("2.2"), decimal("2.1")));
+
         // with null in the array, should be in nulls-last order
         List<Integer> expected = asList(-1, 0, 1, null, null);
         assertFunction("ARRAY_SORT(ARRAY[1, null, 0, null, -1])", new ArrayType(INTEGER), expected);
         assertFunction("ARRAY_SORT(ARRAY[1, null, null, -1, 0])", new ArrayType(INTEGER), expected);
 
         assertInvalidFunction("ARRAY_SORT(ARRAY[color('red'), color('blue')])", FUNCTION_NOT_FOUND);
+        assertInvalidFunction(
+                "ARRAY_SORT(ARRAY[2, 1, 2, 4], (x, y) -> y - x)",
+                INVALID_FUNCTION_ARGUMENT,
+                "Lambda comparator must return either -1, 0, or 1");
+        assertInvalidFunction(
+                "ARRAY_SORT(ARRAY[1, 2], (x, y) -> x / COALESCE(y, 0))",
+                INVALID_FUNCTION_ARGUMENT,
+                "Lambda comparator must return either -1, 0, or 1");
 
         assertCachedInstanceHasBoundedRetainedSize("ARRAY_SORT(ARRAY[2, 3, 4, 1])");
     }
